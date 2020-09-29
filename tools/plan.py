@@ -26,13 +26,18 @@ class Plan():
     def adjustEnergy(self, pos, energy):
         self.plan = lambda game: game.adjust_energy_level(pos, energy)
         return self
-    def remember_count(self, memory, kind, key):
+    def remember_count(self, memory, key, entry):
         def after():
-            if kind not in memory:
-                memory[kind] = {}
-            if key not in memory[kind]:
-                memory[kind][key] = 0
-            memory[kind][key] += 1
+            if key not in memory:
+                memory[key] = {}
+            if entry not in memory[key]:
+                memory[key][entry] = 0
+            memory[key][entry] += 1
+        self.after.append(after)
+        return self
+    def forget_entry(self, memory, key, entry):
+        def after():
+            memory[key].remove(entry)
         self.after.append(after)
         return self
     def __gt__(self, other):

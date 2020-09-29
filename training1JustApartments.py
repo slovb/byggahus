@@ -1,4 +1,4 @@
-from solvers.experiment import setup, take_turn
+from solvers.justApartments import setup, take_turn
 from solver import main
 
 if __name__ == "__main__":

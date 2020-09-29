@@ -32,18 +32,14 @@ class Urgency(Enum):
         return NotImplemented
 
 memory = {
-    'temperature': [],
-    'viable_build_sites': []
+    'temperature': []
 }
 
 def setup(game):
-    state = game.game_state
-    for i in range(len(state.map)):
-        for j in range(len(state.map)):
-            if state.map[i][j] == 0:
-                memory['viable_build_sites'].append((i, j))
+    pass
 
 def take_turn(game):
+    global memory
     memory['temperature'].append(game.game_state.current_temp)
     plans = [Plan(Urgency.NO, 0.0).wait()] + find_build(game) + find_construction(game) + find_upgrades(game) + find_maintenance(game) + find_adjust_energy(game)
     max(plans).do(game)
@@ -57,52 +53,48 @@ def find_build(game):
             plans.append(Plan(Urgency.BUILD, 0.0).build((residence.X, residence.Y)))
     return plans
 
-def viable_buildings(state):
-    output = []
-    for b in state.available_residence_buildings:
-        if state.turn > b.release_tick:
-            output.append(b.building_name)
-    return output
-
 def find_construction(game):
     state = game.game_state
     plans = []
     # new construction?
-    buildings = ["HighRise", "EnvironmentalHouse", "ModernApartments", "Apartments"]
-    viable = viable_buildings(state)
-    for priority, building_name in enumerate(buildings):
-        if building_name not in viable:
-            continue
-        for pos in memory["viable_build_sites"]:
-            pop_tot = 0
-            pop_cap = 0
-            for residence in state.residences:
-                pop_tot += residence.current_pop
-                pop_cap += game.get_blueprint(building_name).max_pop
-            if (state.funds >= game.get_blueprint(building_name).cost and 
-                state.housing_queue >= 14 and
-                pop_cap - pop_tot <= 5):
-                plans.append(Plan(Urgency.CONSTRUCTION, 10.0 - priority).construction(pos, building_name).forget_entry(memory, 'viable_build_sites', pos))
+    building_name = "Apartments"
+    pop_tot = 0
+    pop_cap = 0
+    for residence in state.residences:
+        pop_tot += residence.current_pop
+        pop_cap += game.get_blueprint(building_name).max_pop
+    if (state.funds >= game.get_blueprint(building_name).cost and 
+        state.housing_queue >= 14 and
+        pop_cap - pop_tot <= 5):
+        for i in range(len(state.map)):
+            for j in range(len(state.map)):
+                if state.map[i][j] == 0:
+                    plotTaken = False
+                    for residence in state.residences:
+                        if residence.X == i and residence.Y == j:
+                            plotTaken = True
+                            break
+                    if not plotTaken:
+                        x = i
+                        y = j
+                        plans.append(Plan(Urgency.CONSTRUCTION, 0.0).construction((x, y), building_name))
     return plans
 
 def find_upgrades(game):
+    global memory
     state = game.game_state
     plans = []
-    upgrades = {}
-    if state.funds > 30000:
-        upgrades = {
-            "Apartments": ["Playground", "SolarPanel", "Caretaker"],
-            "ModernApartments": ["Playground", "SolarPanel", "Caretaker"],
-            "EnvironmentalHouse": [],
-            "HighRise": ["Caretaker", "Playground"]
-        }
+    upgrades = ["Caretaker", "SolarPanel", "Playground"]
+    #if state.turn > 600:
+    #    upgrades.append("Playground")
+    #if state.turn > 400 and regulator_count < 7:
+    #    upgrades.append("Insulator")
     for residence in state.residences:
-        if residence.building_name in upgrades:
-            for priority, name in enumerate(upgrades[residence.building_name]):
-                upgrade = next((upgrade for upgrade in state.available_upgrades if upgrade.name == name), None)
-                if upgrade is not None and name not in residence.effects and state.funds >= upgrade.cost:
-                    score = 10.0 - priority
-                    plans.append(Plan(Urgency.UPGRADE, score).upgrade((residence.X, residence.Y), name).remember_count(memory, 'upgrade', name))
+        for priority, name in enumerate(upgrades):
+            upgrade = next((upgrade for upgrade in state.available_upgrades if upgrade.name == name), None)
+            if upgrade is not None and name not in residence.effects and state.funds >= upgrade.cost:
+                score = 10.0 - priority
+                plans.append(Plan(Urgency.UPGRADE, score).upgrade((residence.X, residence.Y), name).remember_count(memory, 'upgrade', name))
     return plans
 
 def find_maintenance(game):
@@ -114,6 +106,7 @@ def find_maintenance(game):
     return plans
 
 def temperatureDerivative():
+    global memory
     t = memory["temperature"]
     if len(t) == 0 or len(t) == 1:
         return 0.0

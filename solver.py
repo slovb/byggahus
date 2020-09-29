@@ -7,7 +7,7 @@ with open('apikey.txt','r') as f:
     api_key = f.read()
 game = GameLayer(api_key)
 
-def main(map_name, take_turn):
+def main(map_name, setup, take_turn):
     mode = ""
     if (len(sys.argv) > 1):
         mode = str(sys.argv[1])
@@ -28,12 +28,11 @@ def main(map_name, take_turn):
         print("Starting game: " + game.game_state.game_id)
         game.start_game()
         total_queue_happiness = 0.0
+        setup(game) # initial setup
         while game.game_state.turn < game.game_state.max_turns:
             state = game.game_state
             happiness_last_turn = state.total_happiness
-
-            take_turn(game)
-
+            take_turn(game) # take turn
             state = game.game_state
             for message in state.messages:
                 print(message + " " + "Happiness: " + str(state.total_happiness) + 
