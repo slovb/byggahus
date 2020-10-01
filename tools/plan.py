@@ -40,6 +40,11 @@ class Plan():
             memory[key].remove(entry)
         self.after.append(after)
         return self
+    def forget_sub_entry(self, memory, key, sub_key, entry):
+        def after():
+            memory[key][sub_key].remove(entry)
+        self.after.append(after)
+        return self
     def __gt__(self, other):
         if self.__class__ is other.__class__:
             if self.urgency > other.urgency:

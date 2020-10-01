@@ -1,6 +1,7 @@
 from enum import Enum
 from tools.plan import Plan
 from tools.newtonRaphson import find_root
+import copy
 
 # Maintenance
 HEALTH_THRESHOLD = {
@@ -9,7 +10,14 @@ HEALTH_THRESHOLD = {
 }
 
 # Building
-MAX_RESIDENCES = 14
+MAX_RESIDENCES = 13
+
+# Utilities
+MAX_UTILITIES = {
+    'Mall': 1,
+    'Park': 3,
+    'WindTurbine': 1
+}
 
 # Energy
 DEG_PER_EXCESS_MWH = 0.75
@@ -17,8 +25,8 @@ DEG_PER_POP = 0.04
 
 FORECAST_DAYS = 5
 TEMP_TARGET = 21.0
-TEMP_LOW = 19.5
-TEMP_HIGH = 22.5
+TEMP_TOO_LOW = 19.5
+TEMP_TOO_HIGH = 22.5
 ENERGY_CHANGE_THRESHOLD = 1.0
 
 DERIVATIVE_NUM_DAYS = 5
@@ -54,14 +62,22 @@ def setup(game):
     for i in range(len(state.map)):
         for j in range(len(state.map)):
             if state.map[i][j] == 0:
-                buildable_spots.append((i, j))
+                occupied = False
+                for residence in state.residences:
+                    if i == residence.X and j == residence.Y:
+                        occupied = True
+                for utility in state.utilities:
+                    if i == utility.X and j == utility.Y:
+                        occupied = True
+                if not occupied:
+                    buildable_spots.append((i, j))
     
     # memorize utilities
     utilityBps = {}
     for utilityBp in state.available_utility_buildings:
         utilityBps[utilityBp.building_name] = utilityBp
     
-    # find spaces for utilites and score areas
+    # score area for building based on available utility effects
     def score(pos, planned_utilities):
         stuff = set()
         for utility in state.utilities:
@@ -77,7 +93,8 @@ def setup(game):
                         stuff.add(effect.name)
         return len(stuff)
     
-    def gather_sites(planned_utilities):
+    # find all the sites for buildings with associated score
+    def sites_for_buildings(planned_utilities):
         sites = {}
         for pos in buildable_spots:
             occupied = False
@@ -86,38 +103,74 @@ def setup(game):
                     occupied = True
                     break
             if not occupied:
+                for utility in state.utilities:
+                    if pos ==  (utility.X, utility.Y):
+                        occupied = True
+                        break
+            if not occupied:
                 sites[pos] = score(pos, planned_utilities)
         return sites
+
+    # score the map for usable utilities
     def utility_score(planned_utilities):
-        sites = gather_sites(planned_utilities)
+        sites = sites_for_buildings(planned_utilities)
         total = sum([v for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:MAX_RESIDENCES])
         for residence in state.residences:
             total += score((residence.X, residence.Y), planned_utilities)
         return total
+    
+    # get the best buildingsites in order
     def best_buildings(planned_utilities):
-        sites = gather_sites(planned_utilities)
+        sites = sites_for_buildings(planned_utilities)
         return [k for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:MAX_RESIDENCES]
     
-    # plan
-    best_utilities = {}
-    best_score = utility_score(best_utilities)
-    for pos in buildable_spots:
-        suggested_utilities = {
-            'Mall': [pos]
-        }
-        total = utility_score(suggested_utilities)
-        if total > best_score:
-            best_score = total
-            best_utilities = suggested_utilities
+    # try to add building_name utility to the list of utilities
+    def improve(building_name, utilities):
+        occupied = []
+        for name in utilities:
+            occupied += utilities[name]
+        # plan
+        best_utilities = utilities
+        best_score = utility_score(best_utilities)
+        for pos in buildable_spots:
+            if pos in occupied:
+                continue
+            suggested_utilities = copy.deepcopy(utilities)
+            suggested_utilities[building_name].append(pos)
+            total = utility_score(suggested_utilities)
+            if total > best_score:
+                best_score = total
+                best_utilities = copy.deepcopy(suggested_utilities)
+        return best_utilities
 
-    print(best_utilities)
+    # prepare to plan utilities
+    utility_queue = []
+    best_utilities = {}
+    for building_name in ['Mall', 'WindTurbine', 'Park']:
+        available = False
+        for utility in state.available_utility_buildings:
+            if utility.building_name == building_name:
+                available = True
+                break
+        if available:
+            # figure out how many utilities to plan
+            count = MAX_UTILITIES[building_name]
+            for utility in state.utilities:
+                if utility.building_name == building_name:
+                    count -= 1
+            best_utilities[building_name] = []
+            utility_queue += [building_name] * max(0, count)
+
+    # plan utilities
+    for building_name in utility_queue:
+        best_utilities = improve(building_name, best_utilities)
 
     memory['planned_buildings'] = best_buildings(best_utilities)
     memory['planned_utilities'] = best_utilities
 
 def take_turn(game):
     memory['temperature'].append(game.game_state.current_temp)
-    plans = [Plan(Urgency.NO, 0.0).wait()] + find_build(game) + find_construction(game) + find_upgrades(game) + find_maintenance(game) + find_adjust_energy(game)
+    plans = [Plan(Urgency.NO, 0.0).wait()] + find_build(game) + find_construction(game) + find_utilities(game) + find_upgrades(game) + find_maintenance(game) + find_adjust_energy(game)
     max(plans).do(game)
 
 def find_build(game):
@@ -148,17 +201,25 @@ def find_construction(game):
         for pos in memory['planned_buildings']:
             pop_tot = 0
             pop_cap = 0
+            bp = game.get_blueprint(building_name)
             for residence in state.residences:
                 pop_tot += residence.current_pop
-                pop_cap += game.get_blueprint(building_name).max_pop
-            if (state.funds >= game.get_blueprint(building_name).cost and 
+                pop_cap += bp.max_pop
+            if (state.funds >= bp.cost and 
                 state.housing_queue >= 14 and
                 pop_cap - pop_tot <= 5):
                 plans.append(Plan(Urgency.CONSTRUCTION, 10.0 - priority).construction(pos, building_name).forget_entry(memory, 'planned_buildings', pos))
     return plans
 
-def find_utilties(game):
+def find_utilities(game):
+    state = game.game_state
     plans = []
+    for building_name in memory['planned_utilities']:
+        positions = memory['planned_utilities'][building_name]
+        bp = game.get_blueprint(building_name)
+        for pos in positions:
+            if (state.funds >= bp.cost) and state.turn >= bp.release_tick:
+                plans.append(Plan(Urgency.CONSTRUCTION, 100.0).construction(pos, building_name).forget_sub_entry(memory, 'planned_utilities', building_name, pos))
     return plans
 
 def find_upgrades(game):
@@ -225,7 +286,7 @@ def find_adjust_energy(game):
     for residence in state.residences:
         need = get_energy_need(residence, state.current_temp)
         urgency = Urgency.MINOR_ADJUST_ENERGY
-        if residence.temperature < TEMP_LOW or residence.temperature > TEMP_HIGH:
+        if residence.temperature < TEMP_TOO_LOW or residence.temperature > TEMP_TOO_HIGH:
             urgency = Urgency.MAJOR_ADJUST_ENERGY        
         change = abs(need - residence.requested_energy_in)
         score = change * residence.current_pop
