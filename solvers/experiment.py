@@ -3,13 +3,19 @@ from tools.plan import Plan
 from tools.newtonRaphson import find_root
 
 # Maintenance
-HEALTH_THRESHOLD = 41
+HEALTH_THRESHOLD = {
+    'EnvironmentalHouse': 41,
+    'Other': 41
+}
+
+# Building
+MAX_RESIDENCES = 14
 
 # Energy
 DEG_PER_EXCESS_MWH = 0.75
 DEG_PER_POP = 0.04
 
-FORECAST_DAYS = 10
+FORECAST_DAYS = 5
 TEMP_TARGET = 21.0
 TEMP_LOW = 19.5
 TEMP_HIGH = 22.5
@@ -32,16 +38,82 @@ class Urgency(Enum):
         return NotImplemented
 
 memory = {
-    'temperature': [],
-    'viable_build_sites': []
+    'planned_buildings': [],
+    'planned_utilities': {},
+    'temperature': []
 }
+
+def manhattan(u, v):
+    return abs(v[0] - u[0]) + abs(v[1] - u[1])
 
 def setup(game):
     state = game.game_state
+
+    # buildable spots
+    buildable_spots = []
     for i in range(len(state.map)):
         for j in range(len(state.map)):
             if state.map[i][j] == 0:
-                memory['viable_build_sites'].append((i, j))
+                buildable_spots.append((i, j))
+    
+    # memorize utilities
+    utilityBps = {}
+    for utilityBp in state.available_utility_buildings:
+        utilityBps[utilityBp.building_name] = utilityBp
+    
+    # find spaces for utilites and score areas
+    def score(pos, planned_utilities):
+        stuff = set()
+        for utility in state.utilities:
+            for name in utilityBps[utility.building_name].effects:
+                effect = game.get_effect(name)
+                if manhattan(pos, (utility.X, utility.Y)) <= effect.radius:
+                    stuff.add(effect.name)
+        for building_name in planned_utilities:
+            for name in utilityBps[building_name].effects:
+                effect = game.get_effect(name)
+                for p in planned_utilities[building_name]:
+                    if manhattan(pos, p) <= effect.radius:
+                        stuff.add(effect.name)
+        return len(stuff)
+    
+    def gather_sites(planned_utilities):
+        sites = {}
+        for pos in buildable_spots:
+            occupied = False
+            for building_name in planned_utilities:
+                if pos in planned_utilities[building_name]:
+                    occupied = True
+                    break
+            if not occupied:
+                sites[pos] = score(pos, planned_utilities)
+        return sites
+    def utility_score(planned_utilities):
+        sites = gather_sites(planned_utilities)
+        total = sum([v for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:MAX_RESIDENCES])
+        for residence in state.residences:
+            total += score((residence.X, residence.Y), planned_utilities)
+        return total
+    def best_buildings(planned_utilities):
+        sites = gather_sites(planned_utilities)
+        return [k for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:MAX_RESIDENCES]
+    
+    # plan
+    best_utilities = {}
+    best_score = utility_score(best_utilities)
+    for pos in buildable_spots:
+        suggested_utilities = {
+            'Mall': [pos]
+        }
+        total = utility_score(suggested_utilities)
+        if total > best_score:
+            best_score = total
+            best_utilities = suggested_utilities
+
+    print(best_utilities)
+
+    memory['planned_buildings'] = best_buildings(best_utilities)
+    memory['planned_utilities'] = best_utilities
 
 def take_turn(game):
     memory['temperature'].append(game.game_state.current_temp)
@@ -57,7 +129,7 @@ def find_build(game):
             plans.append(Plan(Urgency.BUILD, 0.0).build((residence.X, residence.Y)))
     return plans
 
-def viable_buildings(state):
+def available_buildings(state):
     output = []
     for b in state.available_residence_buildings:
         if state.turn > b.release_tick:
@@ -68,12 +140,12 @@ def find_construction(game):
     state = game.game_state
     plans = []
     # new construction?
-    buildings = ["HighRise", "EnvironmentalHouse", "ModernApartments", "Apartments"]
-    viable = viable_buildings(state)
+    buildings = ['HighRise', 'EnvironmentalHouse', 'ModernApartments', 'Apartments']
+    available = available_buildings(state)
     for priority, building_name in enumerate(buildings):
-        if building_name not in viable:
+        if building_name not in available:
             continue
-        for pos in memory["viable_build_sites"]:
+        for pos in memory['planned_buildings']:
             pop_tot = 0
             pop_cap = 0
             for residence in state.residences:
@@ -82,7 +154,11 @@ def find_construction(game):
             if (state.funds >= game.get_blueprint(building_name).cost and 
                 state.housing_queue >= 14 and
                 pop_cap - pop_tot <= 5):
-                plans.append(Plan(Urgency.CONSTRUCTION, 10.0 - priority).construction(pos, building_name).forget_entry(memory, 'viable_build_sites', pos))
+                plans.append(Plan(Urgency.CONSTRUCTION, 10.0 - priority).construction(pos, building_name).forget_entry(memory, 'planned_buildings', pos))
+    return plans
+
+def find_utilties(game):
+    plans = []
     return plans
 
 def find_upgrades(game):
@@ -91,10 +167,10 @@ def find_upgrades(game):
     upgrades = {}
     if state.funds > 30000:
         upgrades = {
-            "Apartments": ["Playground", "SolarPanel", "Caretaker"],
-            "ModernApartments": ["Playground", "SolarPanel", "Caretaker"],
-            "EnvironmentalHouse": [],
-            "HighRise": ["Caretaker", "Playground"]
+            'Apartments': ['SolarPanel', 'Caretaker', 'Playground'],
+            'ModernApartments': ['SolarPanel', 'Playground', 'Caretaker'],
+            'EnvironmentalHouse': ['Insulation'],
+            'HighRise': ['Caretaker', 'Playground']
         }
     for residence in state.residences:
         if residence.building_name in upgrades:
@@ -109,7 +185,10 @@ def find_maintenance(game):
     state = game.game_state
     plans = []
     for residence in state.residences:
-        if residence.health < HEALTH_THRESHOLD:
+        threshold = HEALTH_THRESHOLD['Other']
+        if residence.building_name in HEALTH_THRESHOLD:
+            threshold = HEALTH_THRESHOLD[residence.building_name]
+        if residence.health < threshold:
             plans.append(Plan(Urgency.MAINTENANCE, 100.0 - residence.health).maintenance((residence.X, residence.Y)))
     return plans
 
@@ -127,12 +206,16 @@ def new_temp(energy_in, base_energy, indoor_temperature, outdoor_temperature, cu
 def find_adjust_energy(game):
     def get_energy_need(residence, outside_temp):
         bp = game.get_residence_blueprint(residence.building_name)
+        emissivity = bp.emissivity
+        for name in residence.effects:
+            if name == 'Insulation':
+                emissivity *= 0.6
         def indoor_temp_forecast(energy_in):
             temp = residence.temperature
             o_dt = temperatureDerivative()
             for i in range(FORECAST_DAYS):
                 o_at_t = outside_temp + (i + 1) * o_dt
-                temp = new_temp(energy_in, bp.base_energy_need, temp, o_at_t, residence.current_pop, bp.emissivity)
+                temp = new_temp(energy_in, bp.base_energy_need, temp, o_at_t, residence.current_pop, emissivity)
             return temp
         f = lambda energy_in: TEMP_TARGET - indoor_temp_forecast(energy_in)
         energy = find_root(f, residence.effective_energy_in, H)
