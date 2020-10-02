@@ -49,7 +49,7 @@ def main(map_name, setup, take_turn):
             " (queue: " + str(math.floor(total_queue_happiness / 10)) +
             ") and co2: -" + str(game.get_score()["totalCo2"]))
         print("Final score was: " + score)
-        return score
+        return int(score)
     return None
 
 def get_info():
