@@ -1,7 +1,7 @@
 from enum import Enum
 from tools.plan import Plan
 from tools.newtonRaphson import find_root
-import copy
+import itertools
 
 # Maintenance
 HEALTH_THRESHOLD = {
@@ -10,12 +10,25 @@ HEALTH_THRESHOLD = {
 }
 
 # Building
-MAX_RESIDENCES = 13
+REQ_MAX_VACANCIES = 5
+REQ_MIN_HOUSING_QUEUE = 14
+MAX_RESIDENCES = 16
+OPENER = [] # TODO
+BUILDING_PRIORITY = ['LuxuryResidence', 'Cabin', 'HighRise', 'EnvironmentalHouse', 'ModernApartments', 'Apartments']
+BASE_BUILD_PRIORITY = 4.0 # how many buildings are better than a utility, needs rethinking
+MAX_BUILDINGS = {
+    'LuxuryResidence': 1,
+    'Cabin': 1,
+    'HighRise': 1,
+    'EnvironmentalHouse': 1,
+    'ModernApartments': 11,
+    'Apartments': 30
+}
 
 # Utilities
 MAX_UTILITIES = {
     'Mall': 1,
-    'Park': 3,
+    'Park': 2,
     'WindTurbine': 1
 }
 
@@ -35,138 +48,145 @@ H = 0.01
 class Urgency(Enum):
     NO = 0
     MINOR_ADJUST_ENERGY = 1
-    MAJOR_ADJUST_ENERGY = 2
-    CONSTRUCTION = 3
-    UPGRADE = 4
-    BUILD = 5
+    CONSTRUCTION = 2
+    UPGRADE = 3
+    BUILD = 4
+    MAJOR_ADJUST_ENERGY = 5
     MAINTENANCE = 6
     def __gt__(self, other):
         if self.__class__ is other.__class__:
             return self.value > other.value
         return NotImplemented
 
-memory = {
-    'planned_buildings': [],
-    'planned_utilities': {},
-    'temperature': []
-}
+memory = {}
+def reset_memory():
+    global memory
+    memory = {
+        'planned_buildings': [],
+        'planned_utilities': [],
+        'temperature': []
+    }
 
 def manhattan(u, v):
     return abs(v[0] - u[0]) + abs(v[1] - u[1])
 
 def setup(game):
+    reset_memory()
     state = game.game_state
 
-    # buildable spots
-    buildable_spots = []
-    for i in range(len(state.map)):
-        for j in range(len(state.map)):
-            if state.map[i][j] == 0:
-                occupied = False
-                for residence in state.residences:
-                    if i == residence.X and j == residence.Y:
-                        occupied = True
-                for utility in state.utilities:
-                    if i == utility.X and j == utility.Y:
-                        occupied = True
-                if not occupied:
-                    buildable_spots.append((i, j))
-    
-    # memorize utilities
-    utilityBps = {}
-    for utilityBp in state.available_utility_buildings:
-        utilityBps[utilityBp.building_name] = utilityBp
-    
+    # if map square is occupied
+    def is_occupied(position):
+        if state.map[position[0]][position[1]] != 0:
+            return True
+        for residence in state.residences:
+            if position == (residence.X, residence.Y):
+                return True
+        for utility in state.utilities:
+            if position == (utility.X, utility.Y):
+                return True
+        return False
+
+    # buildable spots, this assume square maps
+    buildable_spots = list(filter(lambda p: not is_occupied(p), list(itertools.product(range(len(state.map)), range(len(state.map))))))
+ 
     # score area for building based on available utility effects
     def score(pos, planned_utilities):
         stuff = set()
         for utility in state.utilities:
-            for name in utilityBps[utility.building_name].effects:
+            for name in game.get_blueprint(utility.building_name).effects:
                 effect = game.get_effect(name)
                 if manhattan(pos, (utility.X, utility.Y)) <= effect.radius:
                     stuff.add(effect.name)
-        for building_name in planned_utilities:
-            for name in utilityBps[building_name].effects:
-                effect = game.get_effect(name)
-                for p in planned_utilities[building_name]:
-                    if manhattan(pos, p) <= effect.radius:
-                        stuff.add(effect.name)
+        for utility_position, utility_name in planned_utilities:
+            for effect_name in game.get_blueprint(utility_name).effects:
+                if manhattan(pos, utility_position) <= game.get_effect(effect_name).radius:
+                    stuff.add(effect_name)
         return len(stuff)
     
     # find all the sites for buildings with associated score
-    def sites_for_buildings(planned_utilities):
+    def scored_buildable_positions(utilities):
         sites = {}
         for pos in buildable_spots:
             occupied = False
-            for building_name in planned_utilities:
-                if pos in planned_utilities[building_name]:
+            for utility_position, _ in utilities:
+                if pos == utility_position:
                     occupied = True
                     break
             if not occupied:
                 for utility in state.utilities:
-                    if pos ==  (utility.X, utility.Y):
+                    if pos == (utility.X, utility.Y):
                         occupied = True
                         break
             if not occupied:
-                sites[pos] = score(pos, planned_utilities)
+                sites[pos] = score(pos, utilities)
         return sites
 
-    # score the map for usable utilities
-    def utility_score(planned_utilities):
-        sites = sites_for_buildings(planned_utilities)
-        total = sum([v for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:MAX_RESIDENCES])
-        for residence in state.residences:
-            total += score((residence.X, residence.Y), planned_utilities)
-        return total
-    
-    # get the best buildingsites in order
-    def best_buildings(planned_utilities):
-        sites = sites_for_buildings(planned_utilities)
-        return [k for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:MAX_RESIDENCES]
-    
-    # try to add building_name utility to the list of utilities
-    def improve(building_name, utilities):
-        occupied = []
-        for name in utilities:
-            occupied += utilities[name]
-        # plan
-        best_utilities = utilities
-        best_score = utility_score(best_utilities)
-        for pos in buildable_spots:
-            if pos in occupied:
-                continue
-            suggested_utilities = copy.deepcopy(utilities)
-            suggested_utilities[building_name].append(pos)
-            total = utility_score(suggested_utilities)
-            if total > best_score:
-                best_score = total
-                best_utilities = copy.deepcopy(suggested_utilities)
-        return best_utilities
+    # true if building is available on this map
+    def building_is_available(building_name):
+        for building in state.available_residence_buildings:
+            if building_name == building.building_name:
+                return True
+        for building in state.available_utility_buildings:
+            if building_name == building.building_name:
+                return True
+        return False
 
-    # prepare to plan utilities
-    utility_queue = []
-    best_utilities = {}
-    for building_name in ['Mall', 'WindTurbine', 'Park']:
-        available = False
-        for utility in state.available_utility_buildings:
-            if utility.building_name == building_name:
-                available = True
-                break
-        if available:
-            # figure out how many utilities to plan
-            count = MAX_UTILITIES[building_name]
-            for utility in state.utilities:
-                if utility.building_name == building_name:
-                    count -= 1
-            best_utilities[building_name] = []
-            utility_queue += [building_name] * max(0, count)
+    def residences_to_build():
+        return max(0, MAX_RESIDENCES - len(state.residences))
 
     # plan utilities
-    for building_name in utility_queue:
-        best_utilities = improve(building_name, best_utilities)
+    def planned_utilities():
+        # score the map for usable utilities
+        def utility_score(utilities):
+            sites = scored_buildable_positions(utilities)
+            total = sum([v for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:residences_to_build()])
+            for residence in state.residences:
+                total += score((residence.X, residence.Y), utilities)
+            return total
 
-    memory['planned_buildings'] = best_buildings(best_utilities)
-    memory['planned_utilities'] = best_utilities
+        # try to add utility_name utility to the list of utilities
+        def place(utility_name, utilities):
+            occupied = [p for p, _ in utilities]
+            # plan
+            best_utilities = utilities
+            best_score = utility_score(best_utilities)
+            for pos in buildable_spots:
+                if pos in occupied:
+                    continue
+                total = utility_score(utilities + [(pos, utility_name)])
+                if total > best_score:
+                    best_score = total
+                    best_utilities = utilities + [(pos, utility_name)]
+            return best_utilities
+
+        # prepare to plan utilities
+        utility_queue = []
+        for building_name in filter(building_is_available, ['Mall', 'WindTurbine', 'Park']):
+            # figure out how many utilities to plan
+            count = MAX_UTILITIES[building_name] - len(list(filter(lambda b: building_name == b.building_name, state.utilities)))
+            utility_queue += [building_name] * max(0, count)
+        # plan utilities
+        utilities = []
+        for utility_name in utility_queue:
+            utilities = place(utility_name, utilities)
+        return utilities
+    
+    # get the best buildingsites in order
+    def planned_buildings(utilities):
+        sites = scored_buildable_positions(utilities)
+        positions = [k for k, v in sorted(sites.items(), key=lambda item: item[1], reverse=True)][:residences_to_build()]
+        build_queue = []
+        for building_name in filter(building_is_available, BUILDING_PRIORITY):
+            # figure out how many buildings to plan
+            count = MAX_BUILDINGS[building_name] - len(list(filter(lambda b: building_name == b.building_name, state.residences)))
+            build_queue += [building_name] * max(0, count)
+        build_queue = build_queue[:len(positions)]
+        return list(zip(positions, build_queue))
+
+    utilities = planned_utilities()
+    memory['planned_utilities'] = utilities
+    memory['planned_buildings'] = planned_buildings(utilities)
+    
 
 def take_turn(game):
     memory['temperature'].append(game.game_state.current_temp)
@@ -193,33 +213,39 @@ def find_construction(game):
     state = game.game_state
     plans = []
     # new construction?
-    buildings = ['HighRise', 'EnvironmentalHouse', 'ModernApartments', 'Apartments']
     available = available_buildings(state)
-    for priority, building_name in enumerate(buildings):
+    vacancies = sum([game.get_blueprint(residence.building_name).max_pop - residence.current_pop for residence in state.residences])
+    bad_time = state.housing_queue < REQ_MIN_HOUSING_QUEUE or vacancies > REQ_MAX_VACANCIES
+    priority = 1
+    for entry in memory['planned_buildings']:
+        position, building_name = entry
         if building_name not in available:
             continue
-        for pos in memory['planned_buildings']:
-            pop_tot = 0
-            pop_cap = 0
-            bp = game.get_blueprint(building_name)
-            for residence in state.residences:
-                pop_tot += residence.current_pop
-                pop_cap += bp.max_pop
-            if (state.funds >= bp.cost and 
-                state.housing_queue >= 14 and
-                pop_cap - pop_tot <= 5):
-                plans.append(Plan(Urgency.CONSTRUCTION, 10.0 - priority).construction(pos, building_name).forget_entry(memory, 'planned_buildings', pos))
+        bp = game.get_blueprint(building_name)
+        score = BASE_BUILD_PRIORITY - 0.01*priority
+        plan = Plan(Urgency.CONSTRUCTION, score).construction(position, building_name).forget_entry(memory, 'planned_buildings', entry)
+        if bad_time or state.funds < bp.cost:
+            plan = Plan(Urgency.CONSTRUCTION, score).wait()
+        plans.append(plan)
+        priority += 1
     return plans
 
 def find_utilities(game):
     state = game.game_state
+    def score(pos, bp):
+        val = 0
+        for residence in state.residences:
+            for effect_name in bp.effects:
+                effect = game.get_effect(effect_name)
+                if manhattan(pos, (residence.X, residence.Y)) <= effect.radius:
+                    val += 1
+        return val
     plans = []
-    for building_name in memory['planned_utilities']:
-        positions = memory['planned_utilities'][building_name]
+    for entry in memory['planned_utilities']:
+        position, building_name = entry
         bp = game.get_blueprint(building_name)
-        for pos in positions:
-            if (state.funds >= bp.cost) and state.turn >= bp.release_tick:
-                plans.append(Plan(Urgency.CONSTRUCTION, 100.0).construction(pos, building_name).forget_sub_entry(memory, 'planned_utilities', building_name, pos))
+        if (state.funds >= bp.cost) and state.turn >= bp.release_tick:
+            plans.append(Plan(Urgency.CONSTRUCTION, score(position, bp)).construction(position, building_name).forget_entry(memory, 'planned_utilities', entry))
     return plans
 
 def find_upgrades(game):
@@ -228,7 +254,7 @@ def find_upgrades(game):
     upgrades = {}
     if state.funds > 30000:
         upgrades = {
-            'Apartments': ['SolarPanel', 'Caretaker', 'Playground'],
+            'Apartments': ['SolarPanel', 'Playground', 'Caretaker'],
             'ModernApartments': ['SolarPanel', 'Playground', 'Caretaker'],
             'EnvironmentalHouse': ['Insulation'],
             'HighRise': ['Caretaker', 'Playground']
