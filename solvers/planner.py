@@ -88,7 +88,7 @@ def setup(game):
 
     # buildable spots, this assume square maps
     buildable_spots = list(filter(lambda p: not is_occupied(p), list(itertools.product(range(len(state.map)), range(len(state.map))))))
- 
+
     # score area for building based on available utility effects
     def score(pos, planned_utilities):
         stuff = set()
@@ -102,7 +102,7 @@ def setup(game):
                 if manhattan(pos, utility_position) <= game.get_effect(effect_name).radius:
                     stuff.add(effect_name)
         return len(stuff)
-    
+
     # find all the sites for buildings with associated score
     def scored_buildable_positions(utilities):
         sites = {}
@@ -170,7 +170,7 @@ def setup(game):
         for utility_name in utility_queue:
             utilities = place(utility_name, utilities)
         return utilities
-    
+
     # get the best buildingsites in order
     def planned_buildings(utilities):
         sites = scored_buildable_positions(utilities)
@@ -186,7 +186,7 @@ def setup(game):
     utilities = planned_utilities()
     memory['planned_utilities'] = utilities
     memory['planned_buildings'] = planned_buildings(utilities)
-    
+
 
 def take_turn(game):
     memory['temperature'].append(game.game_state.current_temp)
@@ -315,9 +315,9 @@ def find_adjust_energy(game):
         need = get_energy_need(residence, state.current_temp)
         urgency = Urgency.MINOR_ADJUST_ENERGY
         if residence.temperature < TEMP_TOO_LOW or residence.temperature > TEMP_TOO_HIGH:
-            urgency = Urgency.MAJOR_ADJUST_ENERGY        
+            urgency = Urgency.MAJOR_ADJUST_ENERGY
         change = abs(need - residence.requested_energy_in)
         score = change * residence.current_pop
         if change > ENERGY_CHANGE_THRESHOLD:
-            plans.append(Plan(urgency, score).adjustEnergy((residence.X, residence.Y), need))
+            plans.append(Plan(urgency, score).adjust_energy((residence.X, residence.Y), need))
     return plans

@@ -9,22 +9,31 @@ class Plan():
             after()
         return self
     def wait(self):
+        self.name = 'wait'
         self.plan = lambda game: game.wait()
         return self
     def build(self, pos):
+        self.name = 'build'
         self.plan = lambda game: game.build(pos)
         return self
     def construction(self, pos, building_name):
+        self.name = 'constru'
         self.plan = lambda game: game.place_foundation(pos, building_name)
         return self
     def upgrade(self, pos, name):
+        self.name = 'upgrade'
         self.plan = lambda game: game.buy_upgrade(pos, name)
         return self
     def maintenance(self, pos):
+        self.name = 'mainten'
         self.plan = lambda game: game.maintenance(pos)
         return self
-    def adjustEnergy(self, pos, energy):
-        self.plan = lambda game: game.adjust_energy_level(pos, energy)
+    def adjust_energy(self, pos, energy):
+        self.name = 'energy'
+        def plan(game):
+            print(energy)
+            game.adjust_energy_level(pos, energy)
+        self.plan = plan
         return self
     def remember_count(self, memory, key, entry):
         def after():

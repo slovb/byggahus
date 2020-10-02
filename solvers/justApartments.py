@@ -63,7 +63,7 @@ def find_construction(game):
     for residence in state.residences:
         pop_tot += residence.current_pop
         pop_cap += game.get_blueprint(building_name).max_pop
-    if (state.funds >= game.get_blueprint(building_name).cost and 
+    if (state.funds >= game.get_blueprint(building_name).cost and
         state.housing_queue >= 14 and
         pop_cap - pop_tot <= 5):
         for i in range(len(state.map)):
@@ -136,9 +136,9 @@ def find_adjust_energy(game):
         need = get_energy_need(residence, state.current_temp)
         urgency = Urgency.MINOR_ADJUST_ENERGY
         if residence.temperature < TEMP_LOW or residence.temperature > TEMP_HIGH:
-            urgency = Urgency.MAJOR_ADJUST_ENERGY        
+            urgency = Urgency.MAJOR_ADJUST_ENERGY
         change = abs(need - residence.requested_energy_in)
         score = change * residence.current_pop
         if change > ENERGY_CHANGE_THRESHOLD:
-            plans.append(Plan(urgency, score).adjustEnergy((residence.X, residence.Y), need))
+            plans.append(Plan(urgency, score).adjust_energy((residence.X, residence.Y), need))
     return plans

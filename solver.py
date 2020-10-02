@@ -4,7 +4,7 @@ import api
 from game_layer import GameLayer
 
 with open('apikey.txt','r') as f:
-    api_key = f.read()
+    api_key = f.read().rstrip('\n')
 game = GameLayer(api_key)
 
 def main(map_name, setup, take_turn):
@@ -29,26 +29,30 @@ def main(map_name, setup, take_turn):
         game.start_game()
         total_queue_happiness = 0.0
         setup(game) # initial setup
+        turn_info = None
         while game.game_state.turn < game.game_state.max_turns:
             state = game.game_state
             happiness_last_turn = state.total_happiness
-            take_turn(game) # take turn
+            turn_info = take_turn(game) # take turn
             state = game.game_state
             for message in state.messages:
-                print(message + " " + "Happiness: " + str(state.total_happiness) + 
-                    ", Growth " + str(state.total_happiness - happiness_last_turn) + 
+                print(message + " " + "Happiness: " + str(state.total_happiness) +
+                    ", Growth " + str(state.total_happiness - happiness_last_turn) +
                     ", Q-growth " + str(state.queue_happiness))
             for error in state.errors:
                 print("Error: " + error)
-            total_queue_happiness += game.game_state.queue_happiness            
+            total_queue_happiness += game.game_state.queue_happiness
         score = str(game.get_score()["finalScore"])
         print("Done with game: " + game.game_state.game_id)
         print("Remaining cash: " + str(math.floor(game.game_state.funds)))
-        print("Scoring: Population: " + str(15 * int(game.get_score()["finalPopulation"])) + " (pop: " + str(game.get_score()["finalPopulation"]) + 
-            "), happiness: " + str(math.floor(game.get_score()["totalHappiness"] / 10)) + 
+        print("Scoring: Population: " + str(15 * int(game.get_score()["finalPopulation"])) + " (pop: " + str(game.get_score()["finalPopulation"]) +
+            "), happiness: " + str(math.floor(game.get_score()["totalHappiness"] / 10)) +
             " (queue: " + str(math.floor(total_queue_happiness / 10)) +
             ") and co2: -" + str(game.get_score()["totalCo2"]))
         print("Final score was: " + score)
+        if turn_info is not None:
+            for k, v in sorted(turn_info.items(), key=lambda item: item[1], reverse=True):
+                print('{}\t{}\t{}'.format(str(v), str(k[0]), str(k[1])))
         return int(score)
     return None
 
