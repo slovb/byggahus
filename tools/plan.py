@@ -30,10 +30,7 @@ class Plan():
         return self
     def adjust_energy(self, pos, energy):
         self.name = 'energy'
-        def plan(game):
-            print(energy)
-            game.adjust_energy_level(pos, energy)
-        self.plan = plan
+        self.plan = lambda game: game.adjust_energy_level(pos, energy)
         return self
     def remember_count(self, memory, key, entry):
         def after():
