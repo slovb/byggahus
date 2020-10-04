@@ -1,6 +1,6 @@
 from enum import Enum
 from tools.plan import Plan
-from tools.newtonRaphson import find_root, dfdx
+from tools.numericEnergy import memorize_temperature, reset_temperature_memory, recommend_energy_adjustments, ENERGY
 import itertools
 
 class Settings():
@@ -51,16 +51,6 @@ class Settings():
                 'WindTurbine': 1
             }
 
-    class Energy():
-        def __init__(self):
-            self.DEG_PER_EXCESS_MWH = 0.75
-            self.DEG_PER_POP = 0.04
-            self.FORECAST_DAYS = 15
-            self.TEMP_TARGET = 21.0
-            self.TEMP_TOO_LOW = 18.5
-            self.TEMP_TOO_HIGH = 23.5
-            self.THRESHOLD = 0.001
-
     class Math():
         def __init__(self):
             self.DERIVATIVE_NUM_DAYS = 5
@@ -71,7 +61,6 @@ class Settings():
         self.BUILDING = self.Building()
         self.UPGRADE = self.Upgrade()
         self.UTILITY = self.Utility()
-        self.ENERGY = self.Energy()
         self.MATH = self.Math()
 
 class Urgency(Enum):
@@ -94,7 +83,6 @@ def reset_memory():
     memory = {
         'planned_buildings': [],
         'planned_utilities': [],
-        'temperature': [],
         'urgencies': {}
     }
 
@@ -103,6 +91,7 @@ def manhattan(u, v):
 
 def setup(game):
     reset_memory()
+    reset_temperature_memory()
     state = game.game_state
 
     # if map square is occupied
@@ -224,7 +213,7 @@ def setup(game):
 
 
 def take_turn(game):
-    memory['temperature'].append(game.game_state.current_temp)
+    memorize_temperature(game.game_state.current_temp)
     plans = [Plan(Urgency.NOP, 0.0).wait()] + find_build(game) + find_construction(game) + find_utilities(game) + find_upgrades(game) + find_maintenance(game) + find_adjust_energy(game)
     plan = max(plans)
     plan = plan.remember_count(memory, 'urgencies', (plan.name, plan.urgency))
@@ -335,73 +324,24 @@ def find_maintenance(game):
             plans.append(plan)
     return plans
 
-def temperature_derivative():
-    t = memory["temperature"]
-    if len(t) == 0 or len(t) == 1:
-        return 0.0
-    elif len(t) < SETTINGS.MATH.DERIVATIVE_NUM_DAYS:
-        return (t[-1] - t[0]) / (len(t) - 1)
-    return (t[-1] - t[-SETTINGS.MATH.DERIVATIVE_NUM_DAYS]) / (SETTINGS.MATH.DERIVATIVE_NUM_DAYS - 1)
-
-def estimate_outdoor_temperature_in_days(state, i, outside_temp):
-    LENGTH_OF_YEAR = 183
-    if state.turn > LENGTH_OF_YEAR:
-        return memory['temperature'][(state.turn + i) % LENGTH_OF_YEAR]
-    return outside_temp + i * temperature_derivative()
-
-def new_temp(energy_in, base_energy, indoor_temperature, outdoor_temperature, current_pop, emissivity):
-    return indoor_temperature + (energy_in - base_energy) * SETTINGS.ENERGY.DEG_PER_EXCESS_MWH + SETTINGS.ENERGY.DEG_PER_POP * current_pop - (indoor_temperature - outdoor_temperature) * emissivity
-
 def find_adjust_energy(game):
-    ENERGY_CHANGE_COST = 150
-    INSULATION_EMISSIVITY_MODIFIER = 0.6
-    CHARGER_BASE_ENERGY_INCREASE = 1.8
-    GOOD_MODIFIER = 0.1
-    state = game.game_state
-    def get_energy_need(residence):
-        outside_temp = state.current_temp
-        bp = game.get_residence_blueprint(residence.building_name)
-        base_energy = bp.base_energy_need
-        emissivity = bp.emissivity
-        for name in residence.effects:
-            if name == 'Insulation':
-                emissivity *= INSULATION_EMISSIVITY_MODIFIER
-            elif name == 'Charger':
-                base_energy += CHARGER_BASE_ENERGY_INCREASE
-        # the amount of degrees off target through the period
-        def score(energy_in):
-            def val(temp):
-                if temp < SETTINGS.ENERGY.TEMP_TOO_LOW:
-                    return abs(SETTINGS.ENERGY.TEMP_TOO_LOW - temp) + GOOD_MODIFIER * (SETTINGS.ENERGY.TEMP_TARGET - SETTINGS.ENERGY.TEMP_TOO_LOW)
-                elif temp > SETTINGS.ENERGY.TEMP_TOO_HIGH:
-                    return abs(SETTINGS.ENERGY.TEMP_TOO_HIGH - temp) + GOOD_MODIFIER * (SETTINGS.ENERGY.TEMP_TOO_HIGH - SETTINGS.ENERGY.TEMP_TARGET)
-                return GOOD_MODIFIER * abs(SETTINGS.ENERGY.TEMP_TARGET - temp)
-            total = 0.0
-            temp = residence.temperature
-            for i in range(SETTINGS.ENERGY.FORECAST_DAYS):
-                outsideEstimate = estimate_outdoor_temperature_in_days(state, i, outside_temp)
-                temp = new_temp(energy_in, base_energy, temp, outsideEstimate, residence.current_pop, emissivity)
-                total += val(temp)
-            return total
-        def guess():
-            return base_energy + (SETTINGS.ENERGY.TEMP_TARGET - residence.temperature + SETTINGS.ENERGY.DEG_PER_POP * residence.current_pop + (residence.temperature - outside_temp) * emissivity) / SETTINGS.ENERGY.DEG_PER_EXCESS_MWH
-        # trying to minimize a strictly positive function, so take the derivative
-        f = lambda energy_in: dfdx(score, energy_in, SETTINGS.MATH.H)
-        guess = guess() - 5.0*SETTINGS.MATH.H
-        energy = find_root(score, guess, SETTINGS.MATH.H)
-        return max(base_energy, energy)
     plans = []
-    for residence in state.residences:
-        need = get_energy_need(residence)
-        urgency = Urgency.MINOR_ADJUST_ENERGY
-        if residence.temperature < SETTINGS.ENERGY.TEMP_TOO_LOW or residence.temperature > SETTINGS.ENERGY.TEMP_TOO_HIGH:
-            urgency = Urgency.MAJOR_ADJUST_ENERGY
-        change = abs(need - residence.requested_energy_in)
-        score = change * residence.current_pop
-        if change > SETTINGS.ENERGY.THRESHOLD:
-            plan = Plan(urgency, score).adjust_energy((residence.X, residence.Y), need)
-            if state.funds < ENERGY_CHANGE_COST:
-                plan = Plan(urgency, score).wait()
+    ENERGY_CHANGE_COST = 150
+    THRESHOLD = 0.001
+    def urgency(residence):
+        if ENERGY.urgent(residence.temperature):
+            return Urgency.MAJOR_ADJUST_ENERGY
+        return Urgency.MINOR_ADJUST_ENERGY
+    def change(residence, energy):
+        return abs(energy - residence.requested_energy_in)
+    def score(residence, energy):
+        return change(residence, energy) * residence.current_pop
+    for residence, energy in recommend_energy_adjustments(game):
+        if change(residence, energy) > THRESHOLD:
+            plan = Plan(urgency(residence), score(residence, energy))
+            if game.game_state.funds < ENERGY_CHANGE_COST:
+                plan.wait()
+            else:
+                plan.adjust_energy((residence.X, residence.Y), energy)
             plans.append(plan)
     return plans
-
