@@ -1,6 +1,6 @@
 from enum import Enum
 from tools.plan import Plan
-from tools.numericEnergy import memorize_temperature, reset_temperature_memory, recommend_energy_adjustments, ENERGY
+from tools.dirtyEnergy import memorize_temperature, reset_temperature_memory, recommend_energy_adjustments, ENERGY
 import itertools
 
 class Settings():
