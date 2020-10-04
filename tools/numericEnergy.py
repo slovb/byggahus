@@ -86,3 +86,17 @@ def recommend_energy_adjustments(game):
         need = get_energy_need(residence)
         recommendations.append((residence, need))
     return recommendations
+
+def best_recommendation(game):
+    importance = (False, 0.0)
+    best = None
+    def change(residence, energy):
+        return abs(energy - residence.requested_energy_in)
+    def score(residence, energy):
+        return change(residence, energy) * residence.current_pop
+    for residence, energy in recommend_energy_adjustments(game):
+        i = (ENERGY.urgent(residence.temperature), score(residence, energy))
+        if i > importance:
+            importance = i
+            best = (residence, energy)
+    return best
