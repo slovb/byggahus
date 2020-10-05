@@ -7,6 +7,7 @@ with open('apikey.txt','r') as f:
     api_key = f.read().rstrip('\n')
 game = GameLayer(api_key)
 
+memory = []
 def main(map_name, setup, take_turn):
     mode = ""
     if (len(sys.argv) > 1):
@@ -53,8 +54,13 @@ def main(map_name, setup, take_turn):
         if turn_info is not None:
             for k, v in sorted(turn_info.items(), key=lambda item: item[1], reverse=True):
                 print('{}\t{}\t{}'.format(str(v), str(k[0]), str(k[1])))
+        memory.append((int(score), game.game_state.game_id))
         return int(score)
     return None
+
+def pretty_print():
+    for score, id in memory:
+        print('{}\t{}'.format(score, id))
 
 def get_info():
     state = game.game_state

@@ -54,3 +54,5 @@ class Plan():
                 return self.score > other.score
             return False
         return NotImplemented
+    def __str__(self):
+        return '{} - {} ({:10.2f})'.format(self.name, str(self.urgency), self.score)
