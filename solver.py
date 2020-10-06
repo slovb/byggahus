@@ -2,6 +2,7 @@ import sys
 import math
 import api
 from game_layer import GameLayer
+import traceback
 
 with open('apikey.txt','r') as f:
     api_key = f.read().rstrip('\n')
@@ -34,7 +35,13 @@ def main(map_name, setup, take_turn):
         while game.game_state.turn < game.game_state.max_turns:
             state = game.game_state
             happiness_last_turn = state.total_happiness
-            turn_info = take_turn(game) # take turn
+            try:
+                turn_info = take_turn(game) # take turn
+            except Exception as ex:
+                print(traceback.format_exc())
+                print(ex)
+                game.end_game()
+                return -1
             state = game.game_state
             for message in state.messages:
                 print(message + " " + "Happiness: " + str(state.total_happiness) +
@@ -58,9 +65,14 @@ def main(map_name, setup, take_turn):
         return int(score)
     return None
 
+def pretty():
+    return '\n'.join(['{}\t{}'.format(score, id) for score, id in memory])
+
 def pretty_print():
-    for score, id in memory:
-        print('{}\t{}'.format(score, id))
+    print(pretty())
+
+def forget():
+    memory.clear()
 
 def get_info():
     state = game.game_state

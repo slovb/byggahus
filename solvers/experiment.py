@@ -1,6 +1,6 @@
 from enum import Enum
 from tools.plan import Plan
-from tools.dirtyEnergy import memorize_temperature, reset_temperature_memory, recommend_energy_adjustments, ENERGY
+from tools.dirtyRegulator import memorize_temperature, reset_temperature_memory, recommend_energy_adjustments, ENERGY
 import itertools
 
 class Settings():
@@ -42,8 +42,10 @@ class Settings():
                 'Cabin': [],
                 'HighRise': ['Playground', 'Regulator', 'Charger', 'Caretaker', 'Insulation']
             }
+            self.DELAY = {
+            }
             self.CHARGER_ONLY_ON_MALL = True
-            self.WAIT_FOR_UPGRADE = True
+            self.SAVE_FOR_UPGRADE = True
 
     class Utility():
         def __init__(self):
@@ -58,12 +60,20 @@ class Settings():
         def __init__(self):
             self.DERIVATIVE_NUM_DAYS = 5
             self.H = 0.001
+    
+    class Energy():
+        def __init__(self):
+            self.COST = 150
+            self.MINOR_FUNDS_LIMIT = 0
+            self.MINOR_INCOME_LIMIT = -20000
+            self.THRESHOLD = 0.001
 
     def __init__(self):
         self.MAINTENANCE = self.Maintenance()
         self.BUILDING = self.Building()
         self.UPGRADE = self.Upgrade()
         self.UTILITY = self.Utility()
+        self.ENERGY = self.Energy()
         self.MATH = self.Math()
 
 class Urgency(Enum):
@@ -84,6 +94,7 @@ memory = {}
 def reset_memory():
     global memory
     memory = {
+        'funds': [],
         'planned_buildings': [],
         'planned_utilities': [],
         'urgencies': {}
@@ -217,11 +228,12 @@ def setup(game):
 
 def take_turn(game):
     memorize_temperature(game.game_state.current_temp)
+    memory['funds'].append(game.game_state.funds)
     plans = [Plan(Urgency.NOP, 0.0).wait()] + find_build(game) + find_construction(game) + find_utilities(game) + find_upgrades(game) + find_maintenance(game) + find_adjust_energy(game)
     plan = max(plans)
     plan = plan.remember_count(memory, 'urgencies', (plan.name, plan.urgency))
-    print(' ')
-    print(plan)
+    #print(' ')
+    #print(plan)
     plan.do(game)
     return memory['urgencies']
 
@@ -304,13 +316,15 @@ def find_upgrades(game):
         if residence.building_name in SETTINGS.UPGRADE.PRIORITY:
             for priority, upgrade_name in enumerate(SETTINGS.UPGRADE.PRIORITY[residence.building_name]):
                 if upgrade_name not in residence.effects:
+                    if upgrade_name in SETTINGS.UPGRADE.DELAY and state.turn < SETTINGS.UPGRADE.DELAY[upgrade_name]:
+                        continue
                     if upgrade_name == 'Charger' and SETTINGS.UPGRADE.CHARGER_ONLY_ON_MALL and 'Mall.2' not in residence.effects:
                         continue
                     score = 10.0 - priority
                     plan = Plan(Urgency.UPGRADE, score)
                     if state.funds >= SETTINGS.UPGRADE.FUNDS_THRESHOLD and state.funds >= COST[upgrade_name]: # never will happen with high threshold
                         plans.append(plan.upgrade((residence.X, residence.Y), upgrade_name).remember_count(memory, 'upgrade', upgrade_name))
-                    elif SETTINGS.UPGRADE.WAIT_FOR_UPGRADE:
+                    elif SETTINGS.UPGRADE.SAVE_FOR_UPGRADE:
                         plans.append(plan.wait())
     return plans
 
@@ -337,10 +351,13 @@ def find_maintenance(game):
             plans.append(plan)
     return plans
 
+def funds_derivative():
+    f = memory['funds'][-SETTINGS.MATH.DERIVATIVE_NUM_DAYS:]
+    return sum(f) / len(f)
+
 def find_adjust_energy(game):
     plans = []
-    ENERGY_CHANGE_COST = 150
-    THRESHOLD = 0.001
+    
     def urgency(residence):
         if ENERGY.urgent(residence.temperature):
             return Urgency.MAJOR_ADJUST_ENERGY
@@ -350,9 +367,13 @@ def find_adjust_energy(game):
     def score(residence, energy):
         return change(residence, energy) * residence.current_pop
     for residence, energy in recommend_energy_adjustments(game):
-        if change(residence, energy) > THRESHOLD:
+        if change(residence, energy) > SETTINGS.ENERGY.THRESHOLD:
             plan = Plan(urgency(residence), score(residence, energy))
-            if game.game_state.funds < ENERGY_CHANGE_COST:
+            if game.game_state.funds < SETTINGS.ENERGY.COST:
+                plan.wait()
+            elif plan.urgency == Urgency.MINOR_ADJUST_ENERGY and game.game_state.funds < SETTINGS.ENERGY.MINOR_FUNDS_LIMIT:
+                plan.wait()
+            elif plan.urgency == Urgency.MINOR_ADJUST_ENERGY and funds_derivative() < SETTINGS.ENERGY.MINOR_INCOME_LIMIT:
                 plan.wait()
             else:
                 plan.adjust_energy((residence.X, residence.Y), energy)

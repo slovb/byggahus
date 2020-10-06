@@ -1,4 +1,4 @@
-from solvers.experiment import setup, take_turn, SETTINGS
+from solvers.utilities import setup, take_turn, SETTINGS
 from solver import main, pretty_print
 
 if __name__ == "__main__":

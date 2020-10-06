@@ -1,19 +1,21 @@
 class Energy():
     def __init__(self):
-        self.DERIVATIVE_NUM_DAYS = 5
-        self.DEG_PER_EXCESS_MWH = 0.75
-        self.DEG_PER_POP = 0.04
+        self.DERIVATIVE_NUM_DAYS = 10
         self.FORECAST_DAYS = 15
+        self.FORECAST_DAYS_WITH_REGULATOR = 15
         self.TEMP_TARGET = 21.0
         self.TEMP_TOO_LOW = 18.5
         self.TEMP_TOO_HIGH = 23.5
-        self.INSULATION_EMISSIVITY_MODIFIER = 0.6
-        self.CHARGER_BASE_ENERGY_INCREASE = 1.8
         self.GOOD_MODIFIER = 0.1
-        self.LENGTH_OF_YEAR = 183
-        self.EXCESSIVE_ENERGY = 50.0
+        self.EXCESSIVE_ENERGY = 20.0
         self.DEPTH = 4
         self.SPAN = 10
+
+        self.DEG_PER_EXCESS_MWH = 0.75
+        self.DEG_PER_POP = 0.04
+        self.LENGTH_OF_YEAR = 183
+        self.INSULATION_EMISSIVITY_MODIFIER = 0.6
+        self.CHARGER_BASE_ENERGY_INCREASE = 1.8
     
     def urgent(self, temperature):
         return temperature < self.TEMP_TOO_LOW or temperature > self.TEMP_TOO_HIGH
@@ -53,10 +55,13 @@ def recommend_energy_adjustments(game):
         bp = game.get_residence_blueprint(residence.building_name)
         base_energy = bp.base_energy_need
         emissivity = bp.emissivity
+        days = ENERGY.FORECAST_DAYS
         if 'Insulation' in residence.effects:
             emissivity *= ENERGY.INSULATION_EMISSIVITY_MODIFIER
         if 'Charger' in residence.effects:
             base_energy += ENERGY.CHARGER_BASE_ENERGY_INCREASE
+        if 'Regulator' in residence.effects:
+            days = ENERGY.FORECAST_DAYS_WITH_REGULATOR
         # the amount of degrees off target through the period
         def score(energy_in):
             def val(temp):
@@ -68,11 +73,13 @@ def recommend_energy_adjustments(game):
              # simulate
             total = 0.0
             temp = residence.temperature
-            for i in range(ENERGY.FORECAST_DAYS):
+            for i in range(days):
                 outsideEstimate = estimate_outdoor_temperature_in_days(state, i, outside_temp)
                 temp = new_temp(energy_in, base_energy, temp, outsideEstimate, residence.current_pop, emissivity)
+                if 'Regulator' in residence.effects:
+                    temp = min(temp, 21.0)
                 total += val(temp)
-            return total
+            return energy_in * total # minimize energy_in
         def search(a, b):
             size = ENERGY.SPAN
             step  = (b - a) / size
