@@ -44,9 +44,9 @@ def main(map_name, setup, take_turn):
                 return -1
             state = game.game_state
             for message in state.messages:
-                print(message + " " + "Happiness: " + str(state.total_happiness) +
-                    ", Growth " + str(state.total_happiness - happiness_last_turn) +
-                    ", Q-growth " + str(state.queue_happiness))
+                print(message + " " + "Happiness: " + str(math.floor(state.total_happiness)) +
+                    ", Growth " + str(math.floor(state.total_happiness - happiness_last_turn)) +
+                    ", Q-growth " + str(math.floor(state.queue_happiness)))
             for error in state.errors:
                 print("Error: " + error)
             total_queue_happiness += game.game_state.queue_happiness

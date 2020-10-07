@@ -1,16 +1,16 @@
 class Energy():
     def __init__(self):
-        self.DERIVATIVE_NUM_DAYS = 10
-        self.FORECAST_DAYS = 15
-        self.FORECAST_DAYS_WITH_REGULATOR = 15
-        self.TEMP_TARGET = 21.0
-        self.TEMP_TOO_LOW = 18.5
-        self.TEMP_TOO_HIGH = 23.5
+        self.DERIVATIVE_NUM_DAYS = 24
+        self.FORECAST_DAYS = 21
+        self.FORECAST_DAYS_WITH_REGULATOR = 21
+        self.TEMP_TOO_LOW = 19.5
+        self.TEMP_TOO_HIGH = 22.5
         self.GOOD_MODIFIER = 0.1
         self.EXCESSIVE_ENERGY = 20.0
-        self.DEPTH = 4
-        self.SPAN = 10
+        self.DEPTH = 3
+        self.SPAN = 5
 
+        self.TEMP_TARGET = 21.0
         self.DEG_PER_EXCESS_MWH = 0.75
         self.DEG_PER_POP = 0.04
         self.LENGTH_OF_YEAR = 183
@@ -39,7 +39,6 @@ def recommend_energy_adjustments(game):
         elif len(t) < ENERGY.DERIVATIVE_NUM_DAYS:
             return (t[-1] - t[0]) / (len(t) - 1)
         return (t[-1] - t[-ENERGY.DERIVATIVE_NUM_DAYS]) / (ENERGY.DERIVATIVE_NUM_DAYS - 1)
-
 
     def estimate_outdoor_temperature_in_days(state, i, outside_temp):
         if state.turn > ENERGY.LENGTH_OF_YEAR:

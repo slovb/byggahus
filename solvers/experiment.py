@@ -7,28 +7,34 @@ class Settings():
     class Maintenance():
         def __init__(self):
             self.THRESHOLD = {
-                'EnvironmentalHouse': 41,
                 'Other': 41
             }
 
     class Building():
         def __init__(self):
-            self.REQ_MAX_VACANCIES = 5
-            self.REQ_MIN_HOUSING_QUEUE = 14
-            self.LIMIT_RESIDENCES = 17
-            self.PRIORITY = ['LuxuryResidence', 'HighRise', 'Apartments', 'Cabin', 'EnvironmentalHouse', 'ModernApartments']
+            self.REQ_MAX_VACANCIES = 19
+            self.REQ_MIN_HOUSING_QUEUE = 3
+            self.LIMIT_RESIDENCES = 20
+            self.PRIORITY = [
+                'HighRise',
+                'ModernApartments',
+                'Apartments',
+                'LuxuryResidence',
+                'EnvironmentalHouse',
+                'Cabin',
+            ]
             self.PRIORITY_VALUE = 4.0 # how many buildings are better than a utility, needs rethinking
             self.LIMIT = {
-                'Apartments': 1,
-                'Cabin': 1,
+                'Apartments': 0,
+                'Cabin': 0,
                 'EnvironmentalHouse': 1,
-                'HighRise': 1,
-                'LuxuryResidence': 1,
-                'ModernApartments': 9
+                'HighRise': 8,
+                'LuxuryResidence': 7,
+                'ModernApartments': 1,
             }
-            self.FILL = ['Apartments']
+            self.FILL = ['EnvironmentalHouse']
             self.DELAY = {
-                'HighRise': 100
+                'HighRise': 40
             }
 
     class Upgrade():
@@ -45,16 +51,19 @@ class Settings():
             self.DELAY = {
             }
             self.CHARGER_ONLY_ON_MALL = True
-            self.SAVE_FOR_UPGRADE = True
+            self.SAVE_FOR_UPGRADE = False
+            self.REGULATOR_TEMP = 24.0
 
     class Utility():
         def __init__(self):
             self.LIMIT = {
-                'Mall': 1,
+                'Mall': 0,
                 'Park': 2,
                 'WindTurbine': 1
             }
+            self.PRIORITY = ['Mall', 'Park', 'WindTurbine']
             self.THRESHOLD = 3
+            self.MALL1_BONUS = True
 
     class Math():
         def __init__(self):
@@ -64,9 +73,12 @@ class Settings():
     class Energy():
         def __init__(self):
             self.COST = 150
-            self.MINOR_FUNDS_LIMIT = 0
-            self.MINOR_INCOME_LIMIT = -20000
-            self.THRESHOLD = 0.001
+            self.THRESHOLD = 0.5
+            self.URGENCY_LOW = 18.5
+            self.URGENCY_HIGH = 23.5
+            
+        def urgent(self, temperature):
+            return temperature < self.URGENCY_LOW or temperature > self.URGENCY_HIGH
 
     def __init__(self):
         self.MAINTENANCE = self.Maintenance()
@@ -75,6 +87,7 @@ class Settings():
         self.UTILITY = self.Utility()
         self.ENERGY = self.Energy()
         self.MATH = self.Math()
+
 
 class Urgency(Enum):
     NOP = 0
@@ -131,6 +144,8 @@ def setup(game):
                 effect = game.get_effect(name)
                 if manhattan(pos, (utility.X, utility.Y)) <= effect.radius:
                     stuff.add(effect.name)
+                    if SETTINGS.UTILITY.MALL1_BONUS and effect.name == 'Mall.1':
+                        stuff.add('bonus')
         for utility_position, utility_name in planned_utilities:
             for effect_name in game.get_blueprint(utility_name).effects:
                 if manhattan(pos, utility_position) <= game.get_effect(effect_name).radius:
@@ -195,7 +210,7 @@ def setup(game):
 
         # prepare to plan utilities
         utility_queue = []
-        for building_name in filter(building_is_available, ['Mall', 'WindTurbine', 'Park']):
+        for building_name in filter(building_is_available, SETTINGS.UTILITY.PRIORITY):
             # figure out how many utilities to plan
             count = SETTINGS.UTILITY.LIMIT[building_name] - len(list(filter(lambda b: building_name == b.building_name, state.utilities)))
             utility_queue += [building_name] * max(0, count)
@@ -322,7 +337,10 @@ def find_upgrades(game):
                         continue
                     score = 10.0 - priority
                     plan = Plan(Urgency.UPGRADE, score)
-                    if state.funds >= SETTINGS.UPGRADE.FUNDS_THRESHOLD and state.funds >= COST[upgrade_name]: # never will happen with high threshold
+                    if upgrade_name == 'Regulator' and residence.temperature > SETTINGS.UPGRADE.REGULATOR_TEMP:
+                        plan.urgency = Urgency.MAJOR_ADJUST_ENERGY
+                        plan.score = 10.0
+                    if state.funds >= COST[upgrade_name] and (state.funds >= SETTINGS.UPGRADE.FUNDS_THRESHOLD or len(memory['planned_buildings']) == 0):
                         plans.append(plan.upgrade((residence.X, residence.Y), upgrade_name).remember_count(memory, 'upgrade', upgrade_name))
                     elif SETTINGS.UPGRADE.SAVE_FOR_UPGRADE:
                         plans.append(plan.wait())
@@ -359,7 +377,7 @@ def find_adjust_energy(game):
     plans = []
     
     def urgency(residence):
-        if ENERGY.urgent(residence.temperature):
+        if SETTINGS.ENERGY.urgent(residence.temperature):
             return Urgency.MAJOR_ADJUST_ENERGY
         return Urgency.MINOR_ADJUST_ENERGY
     def change(residence, energy):
@@ -370,10 +388,6 @@ def find_adjust_energy(game):
         if change(residence, energy) > SETTINGS.ENERGY.THRESHOLD:
             plan = Plan(urgency(residence), score(residence, energy))
             if game.game_state.funds < SETTINGS.ENERGY.COST:
-                plan.wait()
-            elif plan.urgency == Urgency.MINOR_ADJUST_ENERGY and game.game_state.funds < SETTINGS.ENERGY.MINOR_FUNDS_LIMIT:
-                plan.wait()
-            elif plan.urgency == Urgency.MINOR_ADJUST_ENERGY and funds_derivative() < SETTINGS.ENERGY.MINOR_INCOME_LIMIT:
                 plan.wait()
             else:
                 plan.adjust_energy((residence.X, residence.Y), energy)
