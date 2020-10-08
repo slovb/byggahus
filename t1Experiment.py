@@ -3,7 +3,7 @@ from solver import main, forget, pretty
 from tools.dirtyRegulator import ENERGY
 import strategy
 
-RUNS = 2
+RUNS = 3
 MAP_NAME = 'training1'
 
 if __name__ == "__main__":
@@ -14,6 +14,7 @@ if __name__ == "__main__":
     strategy.fill_up(11, 'ModernApartments')
     strategy.warm()
     strategy.closed()
+    strategy.open_with('LuxuryResidence')
 
     def bottom(scores):
         return 'Max: {}\tAvg: {:10.2f}'.format(max(scores), sum(scores) / len(scores))
@@ -29,7 +30,7 @@ if __name__ == "__main__":
     def grow():
         SETTINGS.UPGRADE.FUNDS_THRESHOLD += 1000
 
-    version = [nop, alt]
+    version = [nop]
 
     output = []
     for v in version:

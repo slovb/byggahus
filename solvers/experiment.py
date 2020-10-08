@@ -34,9 +34,10 @@ class Settings():
             }
             self.FILL = ['EnvironmentalHouse']
             self.DELAY = {
-                'HighRise': 40
             }
             self.DIVERSIFY = False
+            self.ADJUST_TO_OPENER = True
+            self.OPENER = []
 
     class Upgrade():
         def __init__(self):
@@ -59,7 +60,7 @@ class Settings():
             }
             self.DELAY = {
             }
-            self.CHARGER_ONLY_ON_MALL = True
+            self.CHARGER_PRIO_ON_MALL = True
             self.SAVE_FOR_UPGRADE = False
             self.REGULATOR_TEMP = 24.0
 
@@ -102,8 +103,8 @@ class Urgency(Enum):
     NOP = 0
     MINOR_ADJUST_ENERGY = 1
     CONSTRUCTION = 2
-    MAJOR_UPGRADE = 3
-    MINOR_UPGRADE = 4
+    MINOR_UPGRADE = 3
+    MAJOR_UPGRADE = 4
     BUILD = 5
     MAJOR_ADJUST_ENERGY = 6
     MAINTENANCE = 7
@@ -246,6 +247,13 @@ def setup(game):
         build_queue = build_queue[:len(positions)]
         return list(zip(positions, build_queue))
     
+    def insert(ls, i, j): #insert entry at i into place at j
+        start = ls[:j]
+        elem = [ls[i]]
+        post = ls[j:i]
+        tail = ls[i+1:]
+        return start + elem + post + tail
+
     def diversify(buildings):
         if len(buildings) == 0:
             return buildings
@@ -254,12 +262,19 @@ def setup(game):
         for i in range(1, len(buildings)):
             building_name = buildings[i][1]
             if building_name not in found:
-                start = buildings[:len(found)]
-                elem = [buildings[i]]
-                post = buildings[len(found):i]
-                tail = buildings[i+1:]
-                buildings = start + elem + post + tail
+                buildings = insert(buildings, i, len(found))
                 found.add(building_name)
+        return buildings
+    
+    def opener(buildings):
+        c = 0
+        for target in SETTINGS.BUILDING.OPENER:
+            for i in range(c, len(buildings)):
+                building_name = buildings[i][1]
+                if building_name == target:
+                    buildings = insert(buildings, i, c)
+                    c += 1
+                    break
         return buildings
 
     utilities = planned_utilities()
@@ -268,6 +283,8 @@ def setup(game):
 
     if SETTINGS.BUILDING.DIVERSIFY:
         memory['planned_buildings'] = diversify(memory['planned_buildings'])
+    if SETTINGS.BUILDING.ADJUST_TO_OPENER:
+        memory['planned_buildings'] = opener(memory['planned_buildings'])
 
 
 def take_turn(game):
@@ -356,19 +373,21 @@ def find_upgrades(game):
         'Charger': 3400,
         'Regulator': 1250
     }
+    SCORE_BASE = 10.0 # make sure this makes Regulators more important than adjustments
     def find(priorities, urgency):
         if residence.building_name in priorities:
             for priority, upgrade_name in enumerate(priorities[residence.building_name]):
                     if upgrade_name not in residence.effects:
                         if upgrade_name in SETTINGS.UPGRADE.DELAY and state.turn < SETTINGS.UPGRADE.DELAY[upgrade_name]:
                             continue
-                        if upgrade_name == 'Charger' and SETTINGS.UPGRADE.CHARGER_ONLY_ON_MALL and 'Mall.2' not in residence.effects:
-                            continue
-                        score = 10.0 - priority
+                        score = SCORE_BASE - priority
                         plan = Plan(urgency, score)
                         if upgrade_name == 'Regulator' and residence.temperature > SETTINGS.UPGRADE.REGULATOR_TEMP:
                             plan.urgency = Urgency.MAJOR_ADJUST_ENERGY
-                            plan.score = 10.0 + residence.temperature
+                            plan.score = SCORE_BASE + residence.temperature
+                        elif upgrade_name == 'Charger' and SETTINGS.UPGRADE.CHARGER_PRIO_ON_MALL and 'Mall.2' in residence.effects:
+                            plan.urgency = Urgency.MAJOR_UPGRADE
+                            plan.score = SCORE_BASE + residence.current_pop
                         if state.funds >= COST[upgrade_name] and (state.funds >= SETTINGS.UPGRADE.FUNDS_THRESHOLD or len(memory['planned_buildings']) == 0):
                             plans.append(plan.upgrade((residence.X, residence.Y), upgrade_name).remember_count(memory, 'upgrade', upgrade_name))
                         elif SETTINGS.UPGRADE.SAVE_FOR_UPGRADE:

@@ -4,6 +4,11 @@ from solvers.experiment import SETTINGS
 def add_house(house, n = 1):
     SETTINGS.BUILDING.LIMIT[house] += n
 
+def open_with(house, n = None):
+    if n == None:
+        n = SETTINGS.BUILDING.LIMIT[house]
+    SETTINGS.BUILDING.OPENER += [house] * n
+
 def high_rise_availability(turn):
     n = max(0, (400 - turn) // 50)
     SETTINGS.BUILDING.LIMIT['HighRise'] = n
@@ -20,38 +25,38 @@ def diversify():
 
 def warm():
     SETTINGS.UPGRADE.PRIORITY = {
-        'Apartments': ['Insulation', 'SolarPanel', 'Playground', 'Charger', 'Regulator', 'Caretaker'],
+        'Apartments': ['Insulation', 'SolarPanel', 'Playground'],
         'Cabin': ['Insulation', 'SolarPanel'],
         'EnvironmentalHouse': ['SolarPanel'],
-        'HighRise': ['Insulation', 'SolarPanel', 'Playground', 'Charger', 'Regulator', 'Caretaker'],
-        'LuxuryResidence': ['SolarPanel', 'Playground', 'Insulation', 'Caretaker', 'Regulator',  'Charger'],
-        'ModernApartments': ['SolarPanel', 'Playground', 'Insulation', 'Caretaker', 'Regulator',  'Charger'],
+        'HighRise': ['Insulation', 'SolarPanel', 'Playground', 'Charger'],
+        'LuxuryResidence': ['SolarPanel', 'Playground'],
+        'ModernApartments': ['SolarPanel', 'Playground'],
     }
     SETTINGS.UPGRADE.LOW_PRIORITY = {
-        'Apartments': [],
+        'Apartments': ['Charger', 'Regulator', 'Caretaker'],
         'Cabin': ['Playground', 'SolarPanel', 'Charger', 'Regulator', 'Caretaker'],
         'EnvironmentalHouse': ['Playground', 'Insulation', 'Charger', 'Regulator', 'Caretaker', ],
-        'HighRise': [],
-        'LuxuryResidence': [],
-        'ModernApartments': [],
+        'HighRise': ['Regulator', 'Caretaker'],
+        'LuxuryResidence': ['Insulation', 'Caretaker', 'Regulator',  'Charger'],
+        'ModernApartments': ['Insulation', 'Caretaker', 'Regulator',  'Charger'],
     }
 
 def cold():
     SETTINGS.UPGRADE.PRIORITY = {
-        'Apartments': ['Insulation', 'Playground', 'SolarPanel', 'Charger', 'Regulator', 'Caretaker'],
+        'Apartments': ['Insulation', 'Playground', 'SolarPanel'],
         'Cabin': ['Insulation', 'SolarPanel'],
         'EnvironmentalHouse': ['SolarPanel'],
-        'HighRise': ['Insulation', 'Playground', 'SolarPanel', 'Caretaker', 'Charger', 'Regulator'],
-        'LuxuryResidence': ['Insulation', 'SolarPanel', 'Caretaker', 'Regulator', 'Playground', 'Charger'],
-        'ModernApartments': ['Insulation', 'Playground', 'SolarPanel', 'Charger', 'Regulator', 'Caretaker'],
+        'HighRise': ['Insulation', 'Playground', 'SolarPanel'],
+        'LuxuryResidence': ['Insulation', 'SolarPanel', 'Playground'],
+        'ModernApartments': ['Insulation', 'Playground', 'SolarPanel'],
     }
     SETTINGS.UPGRADE.LOW_PRIORITY = {
-        'Apartments': [],
+        'Apartments': ['Charger', 'Regulator', 'Caretaker'],
         'Cabin': ['Playground', 'Charger', 'Regulator', 'Caretaker'],
         'EnvironmentalHouse': ['Playground', 'Insulation', 'Charger', 'Regulator', 'Caretaker'],
-        'HighRise': [],
-        'LuxuryResidence': [],
-        'ModernApartments': [],
+        'HighRise': ['Caretaker', 'Charger', 'Regulator'],
+        'LuxuryResidence': ['Caretaker', 'Regulator', 'Charger'],
+        'ModernApartments': ['Charger', 'Regulator', 'Caretaker'],
     }
 
 def closed():
@@ -60,7 +65,6 @@ def closed():
         'Park': 1,
         'WindTurbine': 2,
     }
-    SETTINGS.UPGRADE.CHARGER_ONLY_ON_MALL = False
 
 def open():
     SETTINGS.UTILITY.LIMIT = {
@@ -68,4 +72,3 @@ def open():
         'Park': 2,
         'WindTurbine': 2,
     }
-    SETTINGS.UPGRADE.CHARGER_ONLY_ON_MALL = True

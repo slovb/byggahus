@@ -20,7 +20,7 @@ if __name__ == "__main__":
     def nop():
         pass
     def alt():
-        SETTINGS.UPGRADE.PRIORITY['EnvironmentalHouse'] = ['SolarPanel']
+        SETTINGS.UTILITY.MALL1_BONUS = False
     def reset():
         SETTINGS.UPGRADE.FUNDS_THRESHOLD = 20000
     def grow():
