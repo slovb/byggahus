@@ -3,7 +3,7 @@ from solver import main, pretty, forget
 from tools.dirtyRegulator import ENERGY
 import strategy
 
-RUNS = 3
+RUNS = 1
 MAP_NAME = 'training2'
 
 if __name__ == "__main__":
@@ -20,13 +20,13 @@ if __name__ == "__main__":
     def nop():
         pass
     def alt():
-        SETTINGS.UTILITY.MALL1_BONUS = False
+        SETTINGS.UPGRADE.SAVE_FOR_UPGRADE = True
     def reset():
         SETTINGS.UPGRADE.FUNDS_THRESHOLD = 20000
     def grow():
         SETTINGS.UPGRADE.FUNDS_THRESHOLD += 1000
 
-    version = [nop, alt]
+    version = [nop]
 
     output = []
     for v in version:

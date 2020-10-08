@@ -73,7 +73,7 @@ class Settings():
             }
             self.PRIORITY = ['Mall', 'Park', 'WindTurbine']
             self.THRESHOLD = 3
-            self.MALL1_BONUS = True
+            self.MALL1_BONUS = False
 
     class Math():
         def __init__(self):
@@ -102,8 +102,8 @@ class Settings():
 class Urgency(Enum):
     NOP = 0
     MINOR_ADJUST_ENERGY = 1
-    CONSTRUCTION = 2
-    MINOR_UPGRADE = 3
+    MINOR_UPGRADE = 2
+    CONSTRUCTION = 3
     MAJOR_UPGRADE = 4
     BUILD = 5
     MAJOR_ADJUST_ENERGY = 6
@@ -154,9 +154,9 @@ def setup(game):
             for name in game.get_blueprint(utility.building_name).effects:
                 effect = game.get_effect(name)
                 if manhattan(pos, (utility.X, utility.Y)) <= effect.radius:
+                    if effect.name == 'Mall.1' and not SETTINGS.UTILITY.MALL1_BONUS:
+                        continue
                     stuff.add(effect.name)
-                    if SETTINGS.UTILITY.MALL1_BONUS and effect.name == 'Mall.1':
-                        stuff.add('bonus')
         for utility_position, utility_name in planned_utilities:
             for effect_name in game.get_blueprint(utility_name).effects:
                 if manhattan(pos, utility_position) <= game.get_effect(effect_name).radius:

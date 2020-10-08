@@ -3,7 +3,7 @@ from solver import main, pretty, forget
 from tools.dirtyRegulator import ENERGY
 import strategy
 
-RUNS = 2
+RUNS = 1
 MAP_NAME = 'training1'
 
 def add(name, amount = 1):
@@ -32,6 +32,8 @@ if __name__ == "__main__":
     def nop():
         pass
     def alt():
+        SETTINGS.UPGRADE.SAVE_FOR_UPGRADE = True
+    def reprio():
         name = 'HighRise'
         SETTINGS.UPGRADE.LOW_PRIORITY[name].insert(0, SETTINGS.UPGRADE.PRIORITY[name].pop())
     def reset():
