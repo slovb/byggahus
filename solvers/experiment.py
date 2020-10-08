@@ -27,26 +27,35 @@ class Settings():
             self.LIMIT = {
                 'Apartments': 0,
                 'Cabin': 0,
-                'EnvironmentalHouse': 1,
-                'HighRise': 8,
-                'LuxuryResidence': 7,
-                'ModernApartments': 1,
+                'EnvironmentalHouse': 0,
+                'HighRise': 0,
+                'LuxuryResidence': 0,
+                'ModernApartments': 0,
             }
             self.FILL = ['EnvironmentalHouse']
             self.DELAY = {
                 'HighRise': 40
             }
+            self.DIVERSIFY = False
 
     class Upgrade():
         def __init__(self):
             self.FUNDS_THRESHOLD = 23000
             self.PRIORITY = {
-                'Apartments': ['SolarPanel', 'Regulator', 'Insulation', 'Caretaker', 'Playground', 'Charger'],
-                'ModernApartments': ['Regulator', 'Charger', 'Playground', 'SolarPanel', 'Caretaker', 'Insulation'],
-                'EnvironmentalHouse': ['Regulator', 'Charger', 'SolarPanel', 'Insulation', 'Caretaker'],
-                'LuxuryResidence': ['SolarPanel', 'Regulator', 'Caretaker', 'Regulator', 'Playground'],
-                'Cabin': [],
-                'HighRise': ['Playground', 'Regulator', 'Charger', 'Caretaker', 'Insulation']
+                'Apartments': ['Insulation', 'Playground', 'SolarPanel', 'Charger', 'Regulator', 'Caretaker'],
+                'Cabin': ['Insulation', 'Playground', 'SolarPanel', 'Charger', 'Regulator', 'Caretaker'],
+                'EnvironmentalHouse': ['SolarPanel', 'Insulation', 'Regulator', 'Caretaker', 'Playground'],
+                'HighRise': ['SolarPanel', 'Playground', 'Regulator', 'Caretaker', 'Insulation', 'Charger'],
+                'LuxuryResidence': ['Insulation', 'SolarPanel', 'Caretaker', 'Regulator', 'Playground'],
+                'ModernApartments': ['Insulation', 'Playground', 'SolarPanel', 'Charger', 'Regulator', 'Caretaker'],
+            }
+            self.LOW_PRIORITY = {
+                'Apartments': [],
+                'Cabin': ['Playground', 'SolarPanel', 'Charger', 'Regulator', 'Caretaker'],
+                'EnvironmentalHouse': ['SolarPanel', 'Insulation', 'Regulator', 'Caretaker', 'Playground'],
+                'HighRise': [],
+                'LuxuryResidence': [],
+                'ModernApartments': [],
             }
             self.DELAY = {
             }
@@ -93,10 +102,11 @@ class Urgency(Enum):
     NOP = 0
     MINOR_ADJUST_ENERGY = 1
     CONSTRUCTION = 2
-    UPGRADE = 3
-    BUILD = 4
-    MAJOR_ADJUST_ENERGY = 5
-    MAINTENANCE = 6
+    MAJOR_UPGRADE = 3
+    MINOR_UPGRADE = 4
+    BUILD = 5
+    MAJOR_ADJUST_ENERGY = 6
+    MAINTENANCE = 7
     def __gt__(self, other):
         if self.__class__ is other.__class__:
             return self.value > other.value
@@ -235,10 +245,29 @@ def setup(game):
             build_queue += [available_fill[0]] * (len(positions) - len(build_queue))
         build_queue = build_queue[:len(positions)]
         return list(zip(positions, build_queue))
+    
+    def diversify(buildings):
+        if len(buildings) == 0:
+            return buildings
+        found = set()
+        found.add(buildings[0][1])
+        for i in range(1, len(buildings)):
+            building_name = buildings[i][1]
+            if building_name not in found:
+                start = buildings[:len(found)]
+                elem = [buildings[i]]
+                post = buildings[len(found):i]
+                tail = buildings[i+1:]
+                buildings = start + elem + post + tail
+                found.add(building_name)
+        return buildings
 
     utilities = planned_utilities()
     memory['planned_utilities'] = utilities
     memory['planned_buildings'] = planned_buildings(utilities)
+
+    if SETTINGS.BUILDING.DIVERSIFY:
+        memory['planned_buildings'] = diversify(memory['planned_buildings'])
 
 
 def take_turn(game):
@@ -327,23 +356,27 @@ def find_upgrades(game):
         'Charger': 3400,
         'Regulator': 1250
     }
+    def find(priorities, urgency):
+        if residence.building_name in priorities:
+            for priority, upgrade_name in enumerate(priorities[residence.building_name]):
+                    if upgrade_name not in residence.effects:
+                        if upgrade_name in SETTINGS.UPGRADE.DELAY and state.turn < SETTINGS.UPGRADE.DELAY[upgrade_name]:
+                            continue
+                        if upgrade_name == 'Charger' and SETTINGS.UPGRADE.CHARGER_ONLY_ON_MALL and 'Mall.2' not in residence.effects:
+                            continue
+                        score = 10.0 - priority
+                        plan = Plan(urgency, score)
+                        if upgrade_name == 'Regulator' and residence.temperature > SETTINGS.UPGRADE.REGULATOR_TEMP:
+                            plan.urgency = Urgency.MAJOR_ADJUST_ENERGY
+                            plan.score = 10.0 + residence.temperature
+                        if state.funds >= COST[upgrade_name] and (state.funds >= SETTINGS.UPGRADE.FUNDS_THRESHOLD or len(memory['planned_buildings']) == 0):
+                            plans.append(plan.upgrade((residence.X, residence.Y), upgrade_name).remember_count(memory, 'upgrade', upgrade_name))
+                        elif SETTINGS.UPGRADE.SAVE_FOR_UPGRADE:
+                            plans.append(plan.wait())
     for residence in state.residences:
-        if residence.building_name in SETTINGS.UPGRADE.PRIORITY:
-            for priority, upgrade_name in enumerate(SETTINGS.UPGRADE.PRIORITY[residence.building_name]):
-                if upgrade_name not in residence.effects:
-                    if upgrade_name in SETTINGS.UPGRADE.DELAY and state.turn < SETTINGS.UPGRADE.DELAY[upgrade_name]:
-                        continue
-                    if upgrade_name == 'Charger' and SETTINGS.UPGRADE.CHARGER_ONLY_ON_MALL and 'Mall.2' not in residence.effects:
-                        continue
-                    score = 10.0 - priority
-                    plan = Plan(Urgency.UPGRADE, score)
-                    if upgrade_name == 'Regulator' and residence.temperature > SETTINGS.UPGRADE.REGULATOR_TEMP:
-                        plan.urgency = Urgency.MAJOR_ADJUST_ENERGY
-                        plan.score = 10.0
-                    if state.funds >= COST[upgrade_name] and (state.funds >= SETTINGS.UPGRADE.FUNDS_THRESHOLD or len(memory['planned_buildings']) == 0):
-                        plans.append(plan.upgrade((residence.X, residence.Y), upgrade_name).remember_count(memory, 'upgrade', upgrade_name))
-                    elif SETTINGS.UPGRADE.SAVE_FOR_UPGRADE:
-                        plans.append(plan.wait())
+        find(SETTINGS.UPGRADE.PRIORITY, Urgency.MAJOR_UPGRADE)
+        find(SETTINGS.UPGRADE.LOW_PRIORITY, Urgency.MINOR_UPGRADE)
+            
     return plans
 
 def find_maintenance(game):
