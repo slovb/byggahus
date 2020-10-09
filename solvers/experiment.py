@@ -14,6 +14,7 @@ class Settings():
         def __init__(self):
             self.REQ_MAX_VACANCIES = 19
             self.REQ_MIN_HOUSING_QUEUE = 3
+            self.JUST_BUILD = True
             self.LIMIT_RESIDENCES = 20
             self.PRIORITY = [
                 'HighRise',
@@ -60,7 +61,7 @@ class Settings():
             }
             self.DELAY = {
             }
-            self.CHARGER_PRIO_ON_MALL = True
+            self.CHARGER_PRIO_ON_MALL = False
             self.SAVE_FOR_UPGRADE = False
             self.REGULATOR_TEMP = 24.0
 
@@ -102,8 +103,8 @@ class Settings():
 class Urgency(Enum):
     NOP = 0
     MINOR_ADJUST_ENERGY = 1
-    MINOR_UPGRADE = 2
-    CONSTRUCTION = 3
+    CONSTRUCTION = 2
+    MINOR_UPGRADE = 3
     MAJOR_UPGRADE = 4
     BUILD = 5
     MAJOR_ADJUST_ENERGY = 6
@@ -334,7 +335,7 @@ def find_construction(game):
         score = SETTINGS.BUILDING.PRIORITY_VALUE - 0.01*priority
         priority += 1
         plan = Plan(Urgency.CONSTRUCTION, score)
-        if bad_time:
+        if bad_time and not SETTINGS.BUILDING.JUST_BUILD:
             pass
         elif state.funds < bp.cost:
             plans.append(plan.wait())

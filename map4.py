@@ -3,8 +3,8 @@ from solver import main, pretty, forget
 from tools.dirtyRegulator import ENERGY
 import strategy
 
-RUNS = 2
-MAP_NAME = 'training1'
+RUNS = 3
+MAP_NAME = 'London'
 
 def add(name, amount = 1):
     return lambda: strategy.add_house(name, amount)
@@ -16,6 +16,7 @@ def cc(*funcs):
     return h
 
 if __name__ == "__main__":
+    SETTINGS.BUILDING.JUST_BUILD = False
     strategy.add_house('LuxuryResidence', 7)
     strategy.add_house('ModernApartments')
     strategy.add_house('EnvironmentalHouse')
@@ -23,7 +24,7 @@ if __name__ == "__main__":
     #strategy.diversify()
     strategy.fill_up(11, 'ModernApartments')
     strategy.warm()
-    strategy.closed()
+    strategy.open()
     strategy.open_with('LuxuryResidence')
 
     def bottom(scores):
@@ -40,8 +41,11 @@ if __name__ == "__main__":
         SETTINGS.MAINTENANCE.THRESHOLD['Other'] = 37
     def grow():
         SETTINGS.MAINTENANCE.THRESHOLD['Other'] += 1
+    def more_park():
+        SETTINGS.UTILITY.LIMIT['Park'] += 1
 
-    version = [nop]
+    version = [cc(add('LuxuryResidence', -2), add('HighRise', 2))]
+    version = [cc(more_park, add('HighRise', 1))]
 
     output = []
     for v in version:
